@@ -1,0 +1,14 @@
+### Obtener jugadores registrados
+GET http://localhost:5050/users
+
+### Registrar un jugador (cambia "Juan" por cualquier nombre)
+POST http://localhost:5050/register
+Content-Type: application/json
+
+{
+  "name": "Juan"
+}
+
+### Resetear la lista de jugadores
+POST http://localhost:5050/reset
+
