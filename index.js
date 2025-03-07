@@ -1,129 +1,126 @@
 const express = require("express");
 const path = require("path");
-const cors = require("cors");
 
 const app = express();
-app.use(cors()); 
+
 app.use(express.json());
+app.use("/pantalla", express.static(path.join(__dirname, "app1")));
+app.use("/jugador", express.static(path.join(__dirname, "app2")));
 
-app.use("/app1", express.static(path.join(__dirname, "app1")));
-app.use("/app2", express.static(path.join(__dirname, "app2")));
+let jugadores = [];
+let resultadoJuego = "";
+let reiniciarJuegoFlag = false;
+let timeoutId = null;
 
-let players = {}; // { nombre: null }
-let moves = {};   // { nombre: "rock", "paper" o "scissors" }
-let timeoutId = null; // Temporizador de 10 segundos
-
-app.get("/users", (req, res) => {
-  res.json({ players: Object.keys(players) });
+app.get('/ataques', (req, res) => { 
+  const listos = jugadores.length === 2 && jugadores.every(j => j.ataque);
+  res.json({ jugadores, listos });
 });
+app.post('/ataques', (request, res) => { 
+  const {jugador, nombre, ataque} = request.body;
 
-app.post("/register", (req, res) => {
-  const { name } = req.body;
-  if (!name) {
-    return res.status(400).json({ message: "El nombre es obligatorio" });
+  let jugadorExistente = jugadores.find(j => j.jugador === jugador);
+
+  if (jugadorExistente) {
+      jugadorExistente.nombre = nombre || jugadorExistente.nombre; 
+      if (ataque) {
+          jugadorExistente.ataque = ataque; 
+      }
+  } else {
+      jugadores.push({ jugador, nombre, ataque: ataque || null }); 
   }
 
-  if (Object.keys(players).length >= 2) {
-    return res.status(400).json({ message: "El juego ya tiene dos jugadores" });
-  }
-
-  players[name] = null;
-  res.json({ 
-    message: `Jugador ${name} registrado`, 
-    players: Object.keys(players) });
-
-  // Cuando hay 2 jugadores, comienza el temporizador
-  if (Object.keys(players).length === 2) {
-    startCountPlayers();
-  }
-});
-
-app.post("/play", (req, res) => {
-  const { name, move } = req.body;
-  if (!players.hasOwnProperty(name)) {
-    return res.status(400).json({ message: "Debes registrarte antes de jugar" });
-  }
-
-  moves[name] = move;
-
-  if (Object.keys(moves).length === 2) {
-    clearTimeout(timeoutId); // Detiene el temporizador si ambos jugaron
-    return determineWinner(res);
-  }
-
-  res.json({ message: `Has jugado: ${move}. Esperando al oponente...` });
-});
-
-function startCountPlayers() {
-  timeoutId = setTimeout(() => {
-    const playerNames = Object.keys(players);
-    const [p1, p2] = playerNames;
-    
-    if (!moves[p1] && !moves[p2]) {
-      return resetGame("Ambos jugadores perdieron por inactividad.");
-    } else if (!moves[p1]) {
-      return resetGame(`${p2} gana porque ${p1} no jugó a tiempo.`);
-    } else if (!moves[p2]) {
-      return resetGame(`${p1} gana porque ${p2} no jugó a tiempo.`);
+  if (jugadores.length === 2) {
+    if (!timeoutId) {
+        iniciarTemporizadorAtaque(); 
     }
-  }, 10000); // 10 segundos
+
+    if (jugadores.every(j => j.ataque)) {
+        clearTimeout(timeoutId); 
+        timeoutId = null;
+        determinarGanador(); 
+    }
 }
 
-function determineWinner(res) {
-  const playerNames = Object.keys(players);
-  const [p1, p2] = playerNames;
-  const result = getWinner(moves[p1], moves[p2]);
+res.json({ jugadores, listos: jugadores.length === 2 });
+});
 
-  const finalMessage = result === "draw" ? "Empate" : `${result} gana`;
-  
-  res.json({
-    players: playerNames,
-    moves,
-    result: finalMessage
+app.get("/jugadores-listos", (req, res) => {
+  const listos = jugadores.length === 2 && jugadores.every(j => j.nombre); 
+  res.json({ listos });
+});
+
+app.post("/estado", (req, res) => {
+  jugadores.forEach(j => {
+    if (!j.ataque) { 
+      j.ataque = "piedra";
+    }
   });
+  res.json({ mensaje: "Tiempo terminado, ataques asignados" });
+});
 
-  resetGame(finalMessage);
+app.get("/estado", (req, res) => {
+  const listos = jugadores.length === 2 && jugadores.every(j => j.nombre); 
+  res.json({ listos });
+});
+function iniciarTemporizadorAtaque() {
+  timeoutId = setTimeout(() => {
+      const j1 = jugadores.find(j => j.jugador === 1);
+      const j2 = jugadores.find(j => j.jugador === 2);
+
+      if (!j1.ataque && j2.ataque) {
+          resultadoJuego = `${j2.nombre} gana automáticamente porque ${j1.nombre} no eligió a tiempo`;
+      } else if (!j2.ataque && j1.ataque) {
+          resultadoJuego = `${j1.nombre} gana automáticamente porque ${j2.nombre} no eligió a tiempo`;
+      } else {
+          resultadoJuego = "Nadie eligió, partida cancelada";
+      }
+
+      console.log(resultadoJuego);
+  }, 10000);
 }
+function determinarGanador() {
+  const [j1, j2] = jugadores;
+  let resultado = "";
 
-function getWinner(move1, move2) {
-  if (move1 === move2) return "draw";
-  if (
-    (move1 === "rock" && move2 === "scissors") ||
-    (move1 === "scissors" && move2 === "paper") ||
-    (move1 === "paper" && move2 === "rock")
+  if (j1.ataque === j2.ataque) {
+      resultado = "Empate";
+  } else if (
+      (j1.ataque === "piedra" && j2.ataque === "tijera") ||
+      (j1.ataque === "papel" && j2.ataque === "piedra") ||
+      (j1.ataque === "tijera" && j2.ataque === "papel")
   ) {
-    return "Jugador 1";
-  }
-  return "Jugador 2";
-}
-app.get("/result", (req, res) => {
-  if (Object.keys(players).length < 2) {
-    return res.json({ message: "Esperando jugadores...", players: Object.keys(players) });
+      resultado = `${j1.nombre} gana`;
+  } else {
+      resultado = `${j2.nombre} gana`;
   }
 
-  if (Object.keys(moves).length < 2) {
-    return res.json({ message: "Esperando movimientos...", players: Object.keys(players), moves });
-  }
-
-  res.json({
-    players: Object.keys(players),
-    moves: moves,
-    result: getWinner(moves[Object.keys(players)[0]], moves[Object.keys(players)[1]])
-  });
-});
-function resetGame(message) {
-  console.log(message);
-  players = {};
-  moves = {};
-  timeoutId = null;
+  resultadoJuego = resultado;
 }
 
-app.post("/reset", (req, res) => {
-  players = {};
-  moves = {};
-  timeoutId = null;
-  res.json({ message: "Juego reiniciado" });
+
+app.get("/resultado", (req, res) => {
+  res.json({ resultado: resultadoJuego || "Esperando resultados..." });
 });
 
+function reiniciarJuego() {
+  jugadores = [];
+  resultadoJuego = "";
+  reiniciarJuegoFlag = true; 
+  timeoutId = null;
 
-app.listen(5050, () => console.log("Servidor corriendo en http://localhost:5050"));
+  setTimeout(() => {
+    reiniciarJuegoFlag = false;
+  }, 1000);
+}
+
+app.post("/reiniciar", (req, res) => {
+  reiniciarJuego();
+  res.json({ mensaje: "Partida reiniciada" });
+});
+
+app.get("/estado-reinicio", (req, res) => {
+  res.json({ reiniciar: reiniciarJuegoFlag });
+});
+
+app.listen(5050);

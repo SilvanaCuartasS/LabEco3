@@ -1,79 +1,91 @@
-// document.getElementById("get-btn").addEventListener("click", getUsers);
+document.getElementById("iniciar-juego-btn").addEventListener("click", () => {
+  window.open("http://localhost:5050/jugador/?jugador=1", "_blank");
+  window.open("http://localhost:5050/jugador/?jugador=2", "_blank");
 
-// function getUsers() {
-//   fetch("http://localhost:5050/users")
-//     .then((response) => response.json())
-//     .then((data) => console.log("get response", data))
-//     .catch((error) => console.error("Error:", error));
-// }
-const playersDiv = document.getElementById("players");
-const movesDiv = document.getElementById("moves");
-const resultDiv = document.getElementById("result");
+  document.getElementById("iniciar-juego-btn").style.display = "none"
+});
 
-function fetchGameState() {
-    fetch("http://localhost:5050/result")
-        .then((response) => response.json())
-        .then((data) => {
-            if (!data.players || data.players.length < 2) {
-                playersDiv.innerText = "Waiting for players...";
-                movesDiv.innerText = "";
-                resultDiv.innerText = "";
-                return;
-            }
+document.getElementById("resultado-juego").style.display = "none"
+document.getElementById("informacion-jugador").style.display = "none"
 
-            // Mostrar jugadores
-            playersDiv.innerText = `Players: ${data.players[0]} vs ${data.players[1]}`;
-
-            // Si aún no han jugado los dos, esperar
-            if (!data.moves || Object.keys(data.moves).length < 2) {
-                movesDiv.innerText = "Waiting for both players to play...";
-                resultDiv.innerText = "";
-               
-
-                if (!timerStarted) {
-                    timerStarted = true;
-                    startCountdown();
-                }
-                return
-            }
-
-            // Mostrar jugadas
-            movesDiv.innerText = `${data.players[0]}: ${data.moves[data.players[0]]}  |  
-                                  ${data.players[1]}: ${data.moves[data.players[1]]}`;
-
-            // Mostrar resultado
-            resultDiv.innerText = `Result: ${data.result}`;
-
-            // Borrar info después de 5 segundos
-            setTimeout(() => {
-                fetch("http://localhost:5050/reset", { method: "POST" })
-                    .then(() => {
-                        playersDiv.innerText = "Waiting for players...";
-                        movesDiv.innerText = "";
-                        resultDiv.innerText = "";
-                    });
-            }, 5000);
-        })
-        .catch((error) => console.error("Error:", error));
-}
-
-let timerStarted = false;
-
-function startCountdown() {
-    let timeLeft = 10;
-    const timerDisplay = document.getElementById("status");
-    
-    const timer = setInterval(() => {
-      if (timeLeft <= 0) {
-        clearInterval(timer);
-        timerDisplay.innerText = "¡Tiempo agotado!";
-        enableButtons(false);
+function verificarJugadoresListos() {
+  fetch("http://localhost:5050/estado")
+    .then(response => response.json())
+    .then(data => {
+      if (data.listos) {
+        document.getElementById("mensaje-pantalla").style.display = "none"; 
+        document.getElementById("informacion-jugador").style.display = "block"; 
+        iniciarCuentaRegresiva();
       } else {
-        timerDisplay.innerText = `Tiempo restante: ${timeLeft} segundos`;
-        timeLeft--;
+        setTimeout(verificarJugadoresListos, 1000); 
       }
-    }, 1000);
+    })
+    .catch(error => console.error("Error verificando jugadores:", error));
+}
+function iniciarCuentaRegresiva() {
+  let tiempoRestante = 10;
+  const cuentaSpan = document.getElementById("cuenta");
+
+  if (!cuentaSpan) {
+    console.error("Elemento 'cuenta' no encontrado");
+    return;
   }
 
-// Actualizar cada 2 segundos
-setInterval(fetchGameState, 2000);
+  cuentaSpan.innerText = `Tiempo restante: ${tiempoRestante} segundos`;
+
+  const intervalo = setInterval(() => {
+    tiempoRestante--;
+    cuentaSpan.innerText = `Tiempo restante: ${tiempoRestante} segundos`;
+
+    if (tiempoRestante === 0) {
+      clearInterval(intervalo);
+      cuentaSpan.innerText = "¡Tiempo terminado!";
+      cuentaSpan.style.fontWeight = "bold";
+      notificarFinDeTiempo();
+    }
+  }, 1000);
+}
+function mostrarResultados() {
+  setInterval(() => {
+    fetch("http://localhost:5050/resultado")
+      .then(response => response.json())
+      .then(data => {
+        const resultados = document.getElementById("resultado-juego")
+        resultados.style.display = "block"
+        resultados.innerText = data.resultado;
+
+        setTimeout(() => {
+          resultados.style.display = "none";
+          reiniciarJuego(); 
+        }, 5000);
+      
+      })
+      
+      .catch(error => console.error("Error obteniendo resultados:", error));
+  }, 1000);
+}
+
+function notificarFinDeTiempo() {
+  fetch("http://localhost:5050/estado", { method: "POST" })
+    .then(() => mostrarResultados()) 
+    .catch(error => console.error("Error notificando fin de tiempo:", error));
+}
+
+function verificarEstadoReinicio() {
+  fetch("http://localhost:5050/estado-reinicio")
+    .then(response => response.json())
+    .then(data => {
+      if (data.reiniciar) {
+        location.reload(); 
+      }
+    })
+    .catch(error => console.error("Error verificando estado de reinicio:", error));
+}
+
+setInterval(verificarEstadoReinicio, 1000);
+
+function reiniciarJuego() {
+  fetch("http://localhost:5050/reiniciar", { method: "POST" })
+  .catch(error => console.error("Error reiniciando el juego:", error));
+}
+verificarJugadoresListos();

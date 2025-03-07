@@ -1,73 +1,117 @@
-// document.getElementById("get-btn").addEventListener("click", getUsers);
+const urlParams = new URLSearchParams(window.location.search);
+const parametroJugador = urlParams.get("jugador"); 
+const numeroJugador = parametroJugador ? parseInt(parametroJugador, 10) : null; 
 
-// function getUsers() {
-//   fetch("http://localhost:5050/users")
-//     .then((response) => response.json())
-//     .then((data) => console.log("get response", data))
-//     .catch((error) => console.error("Error:", error));
-// }
+if (!numeroJugador || numeroJugador < 1 || numeroJugador > 2) { 
+  throw new Error("Número de jugador no encontrado o inválido");
+} 
 
-let playerName = "";
+let nombreJugadorGlobal = ""
+const inputNombreJugador = document.getElementById("nombre-jugador-input")
+const urlFetch = 'http://localhost:5050/ataques'
 
-document.getElementById("register-btn").addEventListener("click", registerPlayer);
-document.getElementById("rock-btn").addEventListener("click", () => play("rock"));
-document.getElementById("paper-btn").addEventListener("click", () => play("paper"));
-document.getElementById("scissors-btn").addEventListener("click", () => play("scissors"));
+document.getElementById("piedra").disabled = true;
+document.getElementById("papel").disabled = true;
+document.getElementById("tijera").disabled = true;
 
-function registerPlayer() {
-  playerName = document.getElementById("name-input").value.trim();
+async function obtenerDatosJugador() {
+  try {
+    nombreJugadorGlobal = inputNombreJugador.value
+    if (!nombreJugadorGlobal) {
+      throw new Error("Por favor ingresa un nombre de jugador");
+    }
+    document.getElementById("mensaje-espera").innerText = `${nombreJugadorGlobal}, esperando al otro jugador...`;
+    document.getElementById("mensaje-espera").style.display = "block";
+    const solicitudJugador = { 
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json' ,
+      },
+      body: JSON.stringify({
+        jugador: numeroJugador,
+        nombre: nombreJugadorGlobal,
+      }),
+    }
+    const respuesta = await fetch(urlFetch, solicitudJugador);
 
-  if (!playerName) {
-    document.getElementById("status").innerText = "Debes ingresar un nombre.";
-    return;
+    if (!respuesta.ok) {
+      throw new Error("La respuesta de la red no fue exitosa");
+    }
+    
+    inputNombreJugador.value = "";
+    document.getElementById("nombre-jugador").style.display = "none";
+
+    verificarJugadoresListos();
+
+  } catch (error) {
+    console.error('Error al enviar datos:', error.message);
+    alert(error.message)
   }
+}
+document.getElementById("enviar-btn").addEventListener("click", obtenerDatosJugador);
 
-  fetch("http://localhost:5050/register", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: playerName })
-  })
+async function verificarJugadoresListos() {
+  try {
+    const respuesta = await fetch("http://localhost:5050/jugadores-listos");
+    const data = await respuesta.json();
+
+    if (data.listos) {
+      document.getElementById("mensaje-espera").innerText = "¡Ambos jugadores están listos! Elige tu ataque.";
+      document.getElementById("piedra").disabled = false;
+      document.getElementById("papel").disabled = false;
+      document.getElementById("tijera").disabled = false;
+    } else {
+      setTimeout(verificarJugadoresListos, 1000); 
+    }
+  } catch (error) {
+    console.error("Error verificando jugadores listos:", error);
+  }
+}
+
+let ataqueSeleccionado = false;
+let tiempoFinalizado = false;
+// Enviar ataque seleccionado
+async function enviarAtaque(ataque) {
+  if (ataqueSeleccionado || tiempoFinalizado) return; // Evita que se escojan dos opciones
+
+  ataqueSeleccionado = true;
+    await fetch(urlFetch, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jugador: numeroJugador, ataque } ),
+    });
+
+    document.getElementById("mensaje-espera").innerText = `${nombreJugadorGlobal} Elegiste ${ataque}. Esperando resultados...`;
+    document.getElementById("piedra").disabled = true;
+    document.getElementById("papel").disabled = true;
+    document.getElementById("tijera").disabled = true;
+}
+
+// Verificar si el tiempo se acabó y asignar ataque por defecto
+async function verificarTiempoFinalizado() {
+    const respuesta = await fetch("http://localhost:5050/estado");
+    const data = await respuesta.json();
+
+    if (data.tiempoFinalizado && !ataqueSeleccionado) {
+        tiempoFinalizado = true;
+        enviarAtaque("piedra"); // Si no elige, asigna "piedra"
+    }
+}
+setInterval(verificarTiempoFinalizado, 1000);
+
+document.getElementById("piedra").addEventListener("click", () => enviarAtaque("piedra"));
+document.getElementById("papel").addEventListener("click", () => enviarAtaque("papel"));
+document.getElementById("tijera").addEventListener("click", () => enviarAtaque("tijera"));
+
+function verificarEstadoReinicio() {
+  fetch("http://localhost:5050/estado-reinicio")
     .then(response => response.json())
     .then(data => {
-      console.log("Registro exitoso:", data); 
-      document.getElementById("status").innerText = data.message;
-      if (data.players && data.players.includes(playerName)) {
-        enableButtons(true);
+      if (data.reiniciar) {
+        window.close(); 
       }
     })
-    .catch(error => console.error("Error:", error));
+    .catch(error => console.error("Error verificando estado de reinicio:", error));
 }
 
-function play(move) {
-  if (!playerName) {
-    document.getElementById("status").innerText = "Debes registrarte primero.";
-    return;
-  }
-
-  fetch("http://localhost:5050/play", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: playerName, move })
-  })
-    .then(response => response.json())
-    .then(data => {
-      document.getElementById("status").innerText = data.message;
-      console.log("Estado del juego:", data);
-      if (data.players && data.players.length === 2) {
-        enableButtons(true);
-      }
-      
-    })
-    .catch(error => console.error("Error:", error));
-}
-
-function enableButtons(enabled) {
-  document.getElementById("rock-btn").disabled = !enabled;
-  document.getElementById("paper-btn").disabled = !enabled;
-  document.getElementById("scissors-btn").disabled = !enabled;
-}
-
-
-
-// Deshabilita los botones al inicio
-enableButtons(false);
+setInterval(verificarEstadoReinicio, 1000);
